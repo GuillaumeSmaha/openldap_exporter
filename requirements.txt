@@ -1,4 +1,4 @@
 Twisted[tls]
 service-identity
-ldaptor
+ldap3
 PyYAML

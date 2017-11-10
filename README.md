@@ -9,32 +9,30 @@ You'll need a working OpenLDAP server, and a working Prometheus
 server.  Setup and installation of those is left as an exercise to the
 reader.
 
-The exporter service is developed and tested using Python 2. The
-[ldaptor](https://github.com/twisted/ldaptor) requires features in
-[Twisted](http://twistedmatrix.com/trac/) that have not been ported to
-Python 3 as of Twisted 16.4.0.
+The exporter service is developed and tested using Python 2 and Python 3.
+The dependencies [ldap3](https://github.com/cannatag/ldap3) and
+[Twisted](http://twistedmatrix.com/trac/) are required.
 
 ## How it Works
 
-The OpenLDAP exporter opens up a new LDAP connection to the OpenLDAP
+The OpenLDAP exporter opens up a new LDAP connection to each OpenLDAP
 server each time Prometheus scrapes the exporter. LDAP objects with
-the ```objectClass``` of ```monitorCounterObject``` or
+the ```structuralObjectClass```/```objectClass```  of ```monitorCounterObject``` or
 ```monitoredObject``` under the ```cn=Monitor``` base are searched
 for. Any objects that are found that have data that can be converted
 to a floating point number are exported as metrics with the object's
 distinguished name as a label.
 
-See the [OpenLDAP
-Manual](http://www.openldap.org/doc/admin24/monitoringslapd.html) for
+See the [OpenLDAP Manual](http://www.openldap.org/doc/admin24/monitoringslapd.html) for
 more information on how OpenLDAP exposes performance metrics.
 
 
 ## Installation
 
 ```bash
-git clone https://github.com/jcollie/openldap_exporter.git
+git clone https://github.com/GuillaumeSmaha/openldap_exporter.git
 cd openldap_exporter
-virtualenv --python=/usr/bin/python2 /opt/openldap_exporter
+virtualenv --python=/usr/bin/python2 /opt/openldap_exporter #or python3
 /opt/openldap_exporter/bin/pip install --requirement requirements.txt
 cp openldap_exporter.py /opt/openldap_exporter
 cp openldap_exporter.yml /opt/openldap_exporter
@@ -86,18 +84,38 @@ optional arguments:
 
 The configuration file is a YAML formatted file that looks like this:
 
-```
----
-server: tcp:port=9142
-client: tcp:host=127.0.0.1:port=389
-binddn: cn=Manager,dc=example,dc=com
-bindpw: changeme
+```---
+server_port: 9142
+clients:
+  - server_uri: ldap://127.0.0.1:389
+    name: "MyLDAP"
+    bind_dn: cn=monitor,dc=nodomain
+    bind_pw: monitor
+  - server_uri: ldap://172.17.0.3:389
+    bind_dn: cn=monitor,dc=example,dc=org
+    bind_pw: monitor
+  - server_uri: ldaps://192.168.121.251:1636
+    bind_dn: cn=directory manager,o=gluu
+    bind_pw: ljHbH4vCrwNq
+    validate_certs: False
+  - server_uri: ldap://127.0.0.2:220
+    name: "NoLdapServer"
+    bind_dn: cn=monitor,dc=example,dc=org
+    bind_pw: monitor
+
 ```
 
-Twisted server endpoint specifiers are described
-[here](https://twistedmatrix.com/documents/current/core/howto/endpoints.html#servers). Twisted
-client endpoint specifiers are described
-[here](https://twistedmatrix.com/documents/current/core/howto/endpoints.html#clients).
+The options available for each client are:
+
+ - **name**: Name to return in metrics result. By default, it's equal to **server_uri** parameter
+ - **server_uri**: URI for the OpenLDAP server
+ - **bind_dn**: A DN to bind with. If this is omitted, we'll try a SASL bind with the EXTERNAL mechanism. If this is blank, we'll use an anonymous bind.
+ - **bind\_pw**: The password to use with I(bind_dn)
+ - **start\_tls**: If true, we'll use the START_TLS LDAP extension.
+ - **validate_certs**: If C(no), SSL certificates will not be validated. This should only be used on sites using self-signed certificates.
+ - **timeout_connect**: Timeout in seconds for the connect operation
+ - **timeout_receive**: Timeout in seconds for the receive operation
+
 
 ### Prometheus
 
@@ -116,22 +134,59 @@ scrape_configs:
 ## Example Output
 
 ```
-openldap_up 1
-openldap_monitor_counter_object{dn="cn=Max File Descriptors,cn=Connections,cn=Monitor"} 1024.0
-openldap_monitor_counter_object{dn="cn=Total,cn=Connections,cn=Monitor"} 1553.0
-openldap_monitor_counter_object{dn="cn=Current,cn=Connections,cn=Monitor"} 5.0
-openldap_monitor_counter_object{dn="cn=Bytes,cn=Statistics,cn=Monitor"} 57082372.0
-openldap_monitor_counter_object{dn="cn=PDU,cn=Statistics,cn=Monitor"} 2243556.0
-openldap_monitor_counter_object{dn="cn=Entries,cn=Statistics,cn=Monitor"} 567713.0
-openldap_monitor_counter_object{dn="cn=Referrals,cn=Statistics,cn=Monitor"} 0.0
-openldap_monitor_counter_object{dn="cn=Read,cn=Waiters,cn=Monitor"} 5.0
-openldap_monitor_counter_object{dn="cn=Write,cn=Waiters,cn=Monitor"} 0.0
-openldap_monitored_object{dn="cn=Max,cn=Threads,cn=Monitor"} 16.0
-openldap_monitored_object{dn="cn=Max Pending,cn=Threads,cn=Monitor"} 0.0
-openldap_monitored_object{dn="cn=Open,cn=Threads,cn=Monitor"} 9.0
-openldap_monitored_object{dn="cn=Starting,cn=Threads,cn=Monitor"} 0.0
-openldap_monitored_object{dn="cn=Active,cn=Threads,cn=Monitor"} 1.0
-openldap_monitored_object{dn="cn=Pending,cn=Threads,cn=Monitor"} 0.0
-openldap_monitored_object{dn="cn=Backload,cn=Threads,cn=Monitor"} 1.0
-openldap_monitored_object{dn="cn=Uptime,cn=Time,cn=Monitor"} 3351414.0
+openldap_up{server="MyLDAP"} 1
+openldap_monitor_counter_object{server="MyLDAP",dn="cn=Max File Descriptors,cn=Connections,cn=Monitor"} 1024.0
+openldap_monitor_counter_object{server="MyLDAP",dn="cn=Total,cn=Connections,cn=Monitor"} 1106.0
+openldap_monitor_counter_object{server="MyLDAP",dn="cn=Current,cn=Connections,cn=Monitor"} 1.0
+openldap_monitor_counter_object{server="MyLDAP",dn="cn=Bytes,cn=Statistics,cn=Monitor"} 6039246.0
+openldap_monitor_counter_object{server="MyLDAP",dn="cn=PDU,cn=Statistics,cn=Monitor"} 3078.0
+openldap_monitor_counter_object{server="MyLDAP",dn="cn=Entries,cn=Statistics,cn=Monitor"} 2746.0
+openldap_monitor_counter_object{server="MyLDAP",dn="cn=Referrals,cn=Statistics,cn=Monitor"} 0.0
+openldap_monitor_counter_object{server="MyLDAP",dn="cn=Read,cn=Waiters,cn=Monitor"} 1.0
+openldap_monitor_counter_object{server="MyLDAP",dn="cn=Write,cn=Waiters,cn=Monitor"} 0.0
+openldap_monitored_object{server="MyLDAP",dn="cn=Max,cn=Threads,cn=Monitor"} 16.0
+openldap_monitored_object{server="MyLDAP",dn="cn=Max Pending,cn=Threads,cn=Monitor"} 0.0
+openldap_monitored_object{server="MyLDAP",dn="cn=Open,cn=Threads,cn=Monitor"} 2.0
+openldap_monitored_object{server="MyLDAP",dn="cn=Starting,cn=Threads,cn=Monitor"} 0.0
+openldap_monitored_object{server="MyLDAP",dn="cn=Active,cn=Threads,cn=Monitor"} 1.0
+openldap_monitored_object{server="MyLDAP",dn="cn=Pending,cn=Threads,cn=Monitor"} 0.0
+openldap_monitored_object{server="MyLDAP",dn="cn=Backload,cn=Threads,cn=Monitor"} 1.0
+openldap_monitored_object{server="MyLDAP",dn="cn=Uptime,cn=Time,cn=Monitor"} 270216.0
+openldap_up{server="ldap://172.17.0.3:389"} 1
+openldap_monitor_counter_object{server="ldap://172.17.0.3:389",dn="cn=Max File Descriptors,cn=Connections,cn=Monitor"} 1024.0
+openldap_monitor_counter_object{server="ldap://172.17.0.3:389",dn="cn=Total,cn=Connections,cn=Monitor"} 1018.0
+openldap_monitor_counter_object{server="ldap://172.17.0.3:389",dn="cn=Current,cn=Connections,cn=Monitor"} 1.0
+openldap_monitor_counter_object{server="ldap://172.17.0.3:389",dn="cn=Bytes,cn=Statistics,cn=Monitor"} 3135565.0
+openldap_monitor_counter_object{server="ldap://172.17.0.3:389",dn="cn=PDU,cn=Statistics,cn=Monitor"} 717.0
+openldap_monitor_counter_object{server="ldap://172.17.0.3:389",dn="cn=Entries,cn=Statistics,cn=Monitor"} 648.0
+openldap_monitor_counter_object{server="ldap://172.17.0.3:389",dn="cn=Referrals,cn=Statistics,cn=Monitor"} 0.0
+openldap_monitor_counter_object{server="ldap://172.17.0.3:389",dn="cn=Read,cn=Waiters,cn=Monitor"} 1.0
+openldap_monitor_counter_object{server="ldap://172.17.0.3:389",dn="cn=Write,cn=Waiters,cn=Monitor"} 0.0
+openldap_monitored_object{server="ldap://172.17.0.3:389",dn="cn=Max,cn=Threads,cn=Monitor"} 16.0
+openldap_monitored_object{server="ldap://172.17.0.3:389",dn="cn=Max Pending,cn=Threads,cn=Monitor"} 0.0
+openldap_monitored_object{server="ldap://172.17.0.3:389",dn="cn=Open,cn=Threads,cn=Monitor"} 2.0
+openldap_monitored_object{server="ldap://172.17.0.3:389",dn="cn=Starting,cn=Threads,cn=Monitor"} 0.0
+openldap_monitored_object{server="ldap://172.17.0.3:389",dn="cn=Active,cn=Threads,cn=Monitor"} 1.0
+openldap_monitored_object{server="ldap://172.17.0.3:389",dn="cn=Pending,cn=Threads,cn=Monitor"} 0.0
+openldap_monitored_object{server="ldap://172.17.0.3:389",dn="cn=Backload,cn=Threads,cn=Monitor"} 1.0
+openldap_monitored_object{server="ldap://172.17.0.3:389",dn="cn=Uptime,cn=Time,cn=Monitor"} 3459.0
+openldap_up{server="ldaps://192.168.121.251:1636"} 1
+openldap_monitor_counter_object{server="ldaps://192.168.121.251:1636",dn="cn=Max File Descriptors,cn=Connections,cn=Monitor"} 1024.0
+openldap_monitor_counter_object{server="ldaps://192.168.121.251:1636",dn="cn=Total,cn=Connections,cn=Monitor"} 1024.0
+openldap_monitor_counter_object{server="ldaps://192.168.121.251:1636",dn="cn=Current,cn=Connections,cn=Monitor"} 9.0
+openldap_monitor_counter_object{server="ldaps://192.168.121.251:1636",dn="cn=Bytes,cn=Statistics,cn=Monitor"} 4786044.0
+openldap_monitor_counter_object{server="ldaps://192.168.121.251:1636",dn="cn=PDU,cn=Statistics,cn=Monitor"} 5480.0
+openldap_monitor_counter_object{server="ldaps://192.168.121.251:1636",dn="cn=Entries,cn=Statistics,cn=Monitor"} 4327.0
+openldap_monitor_counter_object{server="ldaps://192.168.121.251:1636",dn="cn=Referrals,cn=Statistics,cn=Monitor"} 0.0
+openldap_monitor_counter_object{server="ldaps://192.168.121.251:1636",dn="cn=Read,cn=Waiters,cn=Monitor"} 9.0
+openldap_monitor_counter_object{server="ldaps://192.168.121.251:1636",dn="cn=Write,cn=Waiters,cn=Monitor"} 0.0
+openldap_monitored_object{server="ldaps://192.168.121.251:1636",dn="cn=Max,cn=Threads,cn=Monitor"} 16.0
+openldap_monitored_object{server="ldaps://192.168.121.251:1636",dn="cn=Max Pending,cn=Threads,cn=Monitor"} 0.0
+openldap_monitored_object{server="ldaps://192.168.121.251:1636",dn="cn=Open,cn=Threads,cn=Monitor"} 3.0
+openldap_monitored_object{server="ldaps://192.168.121.251:1636",dn="cn=Starting,cn=Threads,cn=Monitor"} 0.0
+openldap_monitored_object{server="ldaps://192.168.121.251:1636",dn="cn=Active,cn=Threads,cn=Monitor"} 1.0
+openldap_monitored_object{server="ldaps://192.168.121.251:1636",dn="cn=Pending,cn=Threads,cn=Monitor"} 0.0
+openldap_monitored_object{server="ldaps://192.168.121.251:1636",dn="cn=Backload,cn=Threads,cn=Monitor"} 1.0
+openldap_monitored_object{server="ldaps://192.168.121.251:1636",dn="cn=Uptime,cn=Time,cn=Monitor"} 3264.0
+openldap_up{server="NoLdapServer"} 0
 ```

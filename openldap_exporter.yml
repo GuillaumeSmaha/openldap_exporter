@@ -1,5 +1,18 @@
 ---
-server: tcp:port=9142
-client: tcp:host=127.0.0.1:port=389
-binddn: cn=Manager,dc=example,dc=com
-bindpw: changeme
+server_port: 9142
+clients:
+  - server_uri: ldap://127.0.0.1:389
+    name: "MyLDAP"
+    bind_dn: cn=monitor,dc=nodomain
+    bind_pw: monitor
+  - server_uri: ldap://172.17.0.3:389
+    bind_dn: cn=monitor,dc=example,dc=org
+    bind_pw: monitor
+  - server_uri: ldaps://192.168.121.251:1636
+    bind_dn: cn=directory manager,o=gluu
+    bind_pw: ljHbH4vCrwNq
+    validate_certs: False
+  - server_uri: ldap://127.0.0.2:220
+    name: "NoLdapServer"
+    bind_dn: cn=monitor,dc=example,dc=org
+    bind_pw: monitor
